@@ -50,3 +50,31 @@
 - 内存/持久化的持仓与订单账本
 - 基于历史与实时行情的虚拟撮合
 - 收益统计与复盘报告
+
+### 8. 记忆系统
+- `memory/store.py`：JSON 持久化存储（事实 + 会话 + 对话历史）
+- `memory/extractor.py`：LLM 事实抽取器（失败降级启发式）
+- 事实记忆跨会话复用，供智能助手工具调用
+
+### 9. 工具调用框架
+- `tools/base.py`：Tool 抽象 + OpenAI function calling 协议
+- `tools/registry.py`：工具注册与执行
+- `tools/builtin.py`：内置工具（行情/指标/搜索/记忆）
+
+### 10. 智能助手
+- `assistant/agent.py`：工具调用循环（最多 5 轮）
+- `assistant/search.py`：联网搜索（DuckDuckGo）
+
+### 11. 通用研究 / 筛选 / 选股
+- `research/general.py`：开放主题流式研究
+- `screener/screener.py`：条件 + 自然语言筛选
+- `picker/picker.py`：需求 → 筛选 → LLM 推荐
+
+### 12. Skill 中心
+- `skills/manager.py`：技能注册与管理
+- `skills/builtin.py`：内置技能示例
+
+### 13. 模拟交易
+- `trading/models.py`：订单/持仓模型
+- `trading/account.py`：纸面账户（现金/持仓/盈亏）
+- `trading/engine.py`：对接数据源的下单引擎

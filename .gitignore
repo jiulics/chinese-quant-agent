@@ -48,3 +48,6 @@ web/dist/
 web/*.tsbuildinfo
 web/vite.config.d.ts
 web/vite.config.js
+
+# 运行时记忆数据
+.cqa_memory.json

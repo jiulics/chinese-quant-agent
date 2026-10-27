@@ -21,7 +21,7 @@
 
     <div class="sidebar-footer">
       <div class="status-dot"></div>
-      <span>v0.1.0 · 研究版</span>
+      <span>v0.2.0 · 全功能版</span>
     </div>
   </aside>
 </template>
@@ -33,8 +33,12 @@ const route = useRoute()
 
 const navItems = [
   { path: '/research', label: '单股研究', icon: 'DataAnalysis' },
+  { path: '/general', label: '通用研究', icon: 'Document' },
   { path: '/screener', label: '股票筛选', icon: 'Filter' },
+  { path: '/picker', label: '选股助手', icon: 'Aim' },
   { path: '/assistant', label: '智能助手', icon: 'ChatDotRound' },
+  { path: '/memory', label: 'AI 记忆', icon: 'Collection' },
+  { path: '/skills', label: 'Skill 中心', icon: 'MagicStick' },
   { path: '/trading', label: '模拟交易', icon: 'Wallet' },
 ]
 </script>
@@ -52,11 +56,11 @@ const navItems = [
   -webkit-background-clip: text; background-clip: text;
   -webkit-text-fill-color: transparent;
 }
-.logo-sub { font-size: 12px; color: var(--text-dim); padding: 2px 10px 20px; }
-.nav { display: flex; flex-direction: column; gap: 4px; flex: 1; }
+.logo-sub { font-size: 12px; color: var(--text-dim); padding: 2px 10px 14px; }
+.nav { display: flex; flex-direction: column; gap: 3px; flex: 1; overflow-y: auto; }
 .nav-item {
   display: flex; align-items: center; gap: 12px;
-  padding: 11px 14px; border-radius: 10px;
+  padding: 10px 14px; border-radius: 10px;
   color: var(--text-dim); text-decoration: none; font-size: 14px;
   transition: all 0.2s;
 }
