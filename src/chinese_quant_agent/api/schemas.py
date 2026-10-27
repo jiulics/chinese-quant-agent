@@ -7,6 +7,7 @@ from pydantic import BaseModel
 class AnalyzeRequest(BaseModel):
     symbol: str
     depth: int = 3  # 深度等级 1-5
+    use_mock: bool = False  # 是否强制使用 mock 数据
 
 
 class QuoteOut(BaseModel):
@@ -28,7 +29,9 @@ class AnalyzeResponse(BaseModel):
     quote: QuoteOut
     indicators: dict
     analyses: list[str]
+    scenarios: str | None = None
     final_signal: str
+    depth: int
 
 
 class StockItem(BaseModel):

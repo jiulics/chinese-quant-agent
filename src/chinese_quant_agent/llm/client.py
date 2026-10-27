@@ -1,4 +1,4 @@
-"""LLM 客户端：基于 OpenAI 兼容协议。
+"""LLM 客户端：基于 OpenAI 兼容协议的异步客户端。
 
 设计目标：
 - 一个客户端接入任意 OpenAI 兼容服务（DeepSeek / Qwen / vLLM / Ollama / LM Studio）。
@@ -8,34 +8,12 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from openai import AsyncOpenAI
 
+from .models import LLMMessage, LLMResponse
+
 logger = logging.getLogger(__name__)
-
-
-class LLMMessage:
-    """一条对话消息。"""
-
-    __slots__ = ("role", "content")
-
-    def __init__(self, role: str, content: str) -> None:
-        self.role = role
-        self.content = content
-
-    def to_dict(self) -> dict[str, str]:
-        return {"role": self.role, "content": self.content}
-
-
-class LLMResponse:
-    """模型返回结果。"""
-
-    __slots__ = ("content", "raw")
-
-    def __init__(self, content: str, raw: Any = None) -> None:
-        self.content = content
-        self.raw = raw
 
 
 class LLMClient:
@@ -60,11 +38,26 @@ class LLMClient:
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
-        self._client = AsyncOpenAI(
-            base_url=base_url,
-            api_key=api_key,
-            timeout=timeout,
-        )
+        self._client = AsyncOpenAI(base_url=base_url, api_key=api_key, timeout=timeout)
+
+    def _build_payload(
+        self,
+        messages: list[LLMMessage],
+        system: str | None,
+        temperature: float | None,
+        max_tokens: int | None,
+    ) -> list[dict[str, str]]:
+        payload: list[dict[str, str]] = []
+        if system:
+            payload.append({"role": "system", "content": system})
+        payload.extend(m.to_dict() for m in messages)
+        return payload
+
+    def _gen_kwargs(self, temperature: float | None, max_tokens: int | None) -> dict:
+        return {
+            "temperature": self.temperature if temperature is None else temperature,
+            "max_tokens": self.max_tokens if max_tokens is None else max_tokens,
+        }
 
     async def chat(
         self,
@@ -74,20 +67,11 @@ class LLMClient:
         temperature: float | None = None,
         max_tokens: int | None = None,
     ) -> LLMResponse:
-        """发送对话并返回助手回复。
-
-        messages 为对话历史；system 会作为 system 消息置于最前。
-        """
-        payload: list[dict[str, str]] = []
-        if system:
-            payload.append({"role": "system", "content": system})
-        payload.extend(m.to_dict() for m in messages)
-
+        """发送对话并返回助手回复。"""
         resp = await self._client.chat.completions.create(
             model=self.model,
-            messages=payload,
-            temperature=self.temperature if temperature is None else temperature,
-            max_tokens=self.max_tokens if max_tokens is None else max_tokens,
+            messages=self._build_payload(messages, system, temperature, max_tokens),
+            **self._gen_kwargs(temperature, max_tokens),
         )
         content = resp.choices[0].message.content or ""
         logger.debug("LLM 回复长度=%d", len(content))
@@ -109,14 +93,22 @@ class LLMClient:
             max_tokens=max_tokens,
         )
 
-
-def build_client_from_settings(settings: Any) -> LLMClient:
-    """从 Settings 对象构建 LLMClient，便于依赖注入。"""
-    return LLMClient(
-        base_url=settings.llm_base_url,
-        api_key=settings.llm_api_key,
-        model=settings.llm_model,
-        temperature=settings.llm_temperature,
-        max_tokens=settings.llm_max_tokens,
-        timeout=settings.llm_timeout,
-    )
+    async def stream_chat(
+        self,
+        messages: list[LLMMessage],
+        *,
+        system: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ):
+        """流式对话：异步生成器，逐段 yield 文本增量。"""
+        stream = await self._client.chat.completions.create(
+            model=self.model,
+            messages=self._build_payload(messages, system, temperature, max_tokens),
+            **self._gen_kwargs(temperature, max_tokens),
+            stream=True,
+        )
+        async for chunk in stream:
+            delta = chunk.choices[0].delta if chunk.choices else None
+            if delta and delta.content:
+                yield delta.content

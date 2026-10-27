@@ -41,3 +41,10 @@ logs/
 
 # 系统
 Thumbs.db
+
+# 前端构建产物
+web/node_modules/
+web/dist/
+web/*.tsbuildinfo
+web/vite.config.d.ts
+web/vite.config.js
