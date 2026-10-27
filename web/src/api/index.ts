@@ -1,12 +1,10 @@
 import axios from 'axios'
 
-// 统一的后端 API 客户端
 const http = axios.create({
   baseURL: '/api',
-  timeout: 120000, // 分析可能较慢，放宽超时
+  timeout: 180000, // 分析可能较慢，放宽超时
 })
 
-// 类型定义
 export interface StockQuote {
   symbol: string
   name: string
@@ -29,14 +27,22 @@ export interface AnalyzeResult {
   final_signal: string
 }
 
-// 分析单只股票
-export async function analyzeStock(symbol: string): Promise<AnalyzeResult> {
-  const { data } = await http.post<AnalyzeResult>('/analyze', { symbol })
+export interface StockItem {
+  symbol: string
+  name: string
+}
+
+export async function analyzeStock(symbol: string, depth = 3): Promise<AnalyzeResult> {
+  const { data } = await http.post<AnalyzeResult>('/analyze', { symbol, depth })
   return data
 }
 
-// 获取股票列表（用于搜索联想）
-export async function getStockList(): Promise<Array<{ symbol: string; name: string }>> {
-  const { data } = await http.get<Array<{ symbol: string; name: string }>>('/stocks')
+export async function searchStocks(q: string): Promise<StockItem[]> {
+  const { data } = await http.get<StockItem[]>('/stocks/search', { params: { q } })
+  return data
+}
+
+export async function healthCheck(): Promise<{ status: string; version: string }> {
+  const { data } = await http.get('/health')
   return data
 }

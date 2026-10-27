@@ -1,10 +1,11 @@
-"""命令行入口：cqa analyze 600519"""
+"""命令行入口：cqa analyze 600519 / cqa serve"""
 from __future__ import annotations
 
 import asyncio
 import logging
 
 import typer
+import uvicorn
 from rich.console import Console
 from rich.panel import Panel
 
@@ -36,6 +37,22 @@ def analyze(symbol: str = typer.Argument(..., help="股票代码，如 600519"))
         console.print(Panel(a, title=f"分析 {i}"))
 
     console.print(Panel(result["final_signal"], title="最终投资信号", border_style="green"))
+
+
+@app.command()
+def serve(
+    host: str = typer.Option("0.0.0.0", help="监听地址"),
+    port: int = typer.Option(8000, help="监听端口"),
+    reload: bool = typer.Option(False, help="开发模式热重载"),
+):
+    """启动 FastAPI Web 服务。"""
+    console.print(f"[bold green]启动服务: http://localhost:{port} [/bold green]")
+    uvicorn.run(
+        "chinese_quant_agent.api.app:app",
+        host=host,
+        port=port,
+        reload=reload,
+    )
 
 
 @app.command()

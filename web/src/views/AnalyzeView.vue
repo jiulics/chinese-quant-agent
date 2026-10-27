@@ -13,15 +13,24 @@
         <el-card class="search-card">
           <el-form :inline="true" @submit.prevent="onSubmit">
             <el-form-item label="股票代码">
-              <el-input
+              <el-select
                 v-model="symbol"
-                placeholder="输入股票代码，如 600519"
+                filterable
+                remote
                 clearable
-                style="width: 260px"
-                @keyup.enter="onSubmit"
+                placeholder="输入代码或名称，如 600519 / 茅台"
+                :remote-method="onSearch"
+                :loading="searchLoading"
+                style="width: 320px"
+                @change="onSubmit"
               >
-                <template #prefix><el-icon><Search /></el-icon></template>
-              </el-input>
+                <el-option
+                  v-for="s in searchResults"
+                  :key="s.symbol"
+                  :label="`${s.symbol} - ${s.name}`"
+                  :value="s.symbol"
+                />
+              </el-select>
             </el-form-item>
             <el-form-item>
               <el-button
@@ -34,6 +43,7 @@
             </el-form-item>
           </el-form>
           <div class="quick-tags">
+            <span class="quick-label">热门：</span>
             <el-tag
               v-for="s in quickSymbols"
               :key="s"
@@ -55,8 +65,12 @@
           class="error-alert"
         />
 
-        <div v-if="store.result" class="result">
-          <!-- 行情概览 -->
+        <div v-if="store.loading" class="loading-box">
+          <el-skeleton :rows="6" animated />
+          <p class="loading-text">多智能体正在分析，请稍候…</p>
+        </div>
+
+        <div v-else-if="store.result" class="result">
           <el-card class="block">
             <template #header>
               <div class="block-header">
@@ -96,7 +110,6 @@
             </div>
           </el-card>
 
-          <!-- 技术指标 -->
           <el-card class="block">
             <template #header><span>技术指标</span></template>
             <div class="indicator-grid">
@@ -111,7 +124,6 @@
             </div>
           </el-card>
 
-          <!-- 分析报告 -->
           <el-card
             v-for="(a, i) in store.result.analyses"
             :key="i"
@@ -121,7 +133,6 @@
             <div class="analysis-text">{{ a }}</div>
           </el-card>
 
-          <!-- 最终信号 -->
           <el-card class="block final-card">
             <template #header>
               <span class="final-title">最终投资信号</span>
@@ -130,7 +141,7 @@
           </el-card>
         </div>
 
-        <el-empty v-else-if="!store.loading" description="输入股票代码开始分析" />
+        <el-empty v-else description="输入股票代码开始分析" />
       </el-main>
 
       <el-footer class="footer">
@@ -143,9 +154,12 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useAnalysisStore } from '@/stores/analysis'
+import { searchStocks, type StockItem } from '@/api'
 
 const store = useAnalysisStore()
 const symbol = ref('')
+const searchResults = ref<StockItem[]>([])
+const searchLoading = ref(false)
 
 const quickSymbols = ['600519', '000001', '300750', '601318']
 
@@ -155,6 +169,21 @@ const pctType = computed(() => {
   if (pct < 0) return 'success'
   return 'info'
 })
+
+async function onSearch(q: string) {
+  if (!q) {
+    searchResults.value = []
+    return
+  }
+  searchLoading.value = true
+  try {
+    searchResults.value = await searchStocks(q)
+  } catch {
+    searchResults.value = []
+  } finally {
+    searchLoading.value = false
+  }
+}
 
 function onSubmit() {
   const s = symbol.value.trim()
@@ -203,14 +232,27 @@ function formatAmount(v: number): string {
 }
 .quick-tags {
   display: flex;
+  align-items: center;
   gap: 8px;
   margin-top: 4px;
+}
+.quick-label {
+  font-size: 13px;
+  color: #909399;
 }
 .tag {
   cursor: pointer;
 }
 .error-alert {
   margin-bottom: 16px;
+}
+.loading-box {
+  padding: 40px 0;
+}
+.loading-text {
+  text-align: center;
+  color: #909399;
+  margin-top: 12px;
 }
 .block {
   margin-bottom: 16px;
