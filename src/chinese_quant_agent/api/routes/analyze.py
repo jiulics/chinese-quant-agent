@@ -48,6 +48,8 @@ def build_router(
             symbol=result["symbol"],
             quote=_quote_to_out(result["quote"]),
             indicators=result["indicators"],
+            valuation=result.get("valuation", {}),
+            financials=result.get("financials", {}),
             analyses=result["analyses"],
             scenarios=result.get("scenarios"),
             final_signal=result["final_signal"],

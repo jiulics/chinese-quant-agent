@@ -67,6 +67,26 @@ class AutoProvider(DataProvider):
                 logger.warning("%s 获取股票列表失败，回退: %s", p.__class__.__name__, e)
         return await self._mock.get_stock_list()
 
+    async def get_valuation_data(self, symbol: str) -> dict:
+        for p in self._chain:
+            try:
+                result = await p.get_valuation_data(symbol)
+                if result:
+                    return result
+            except Exception as e:  # noqa: BLE001
+                logger.warning("%s 获取估值失败，回退: %s", p.__class__.__name__, e)
+        return {}
+
+    async def get_financial_data(self, symbol: str) -> dict:
+        for p in self._chain:
+            try:
+                result = await p.get_financial_data(symbol)
+                if result:
+                    return result
+            except Exception as e:  # noqa: BLE001
+                logger.warning("%s 获取财务失败，回退: %s", p.__class__.__name__, e)
+        return {}
+
     async def search_stocks(self, query: str, limit: int = 20) -> list[dict[str, str]]:
         for p in self._chain:
             try:

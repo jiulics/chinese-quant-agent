@@ -1,8 +1,8 @@
 """编排器：串联数据获取 -> 多智能体辩论分析 -> 策略汇总。
 
 流程：
-1. 拉取行情与历史数据
-2. 计算技术指标
+1. 拉取全量真实数据：行情 + 历史K线 + 技术指标 + 估值 + 财务
+2. 组装统一 context，分发给各智能体（每个 Agent 拿到完整、贴切的数据视图）
 3. 辩论引擎驱动多智能体（支持 5 级深度 + 多情景）
 4. 输出最终中文投资信号（支持流式回调）
 """
@@ -38,18 +38,24 @@ class Orchestrator:
         depth: 1-5，控制辩论深度。
         callback: 可选异步回调，接收过程事件（用于 SSE）。
         """
+        # 1. 拉取全量真实数据（数据层统一装配，各 Agent 共享同一份 context）
         quote = await self.data.get_quote(symbol)
         history = await self.data.get_history(symbol)
         indicators = compute_indicators(history.df)
+        valuation = await self.data.get_valuation_data(symbol)
+        financials = await self.data.get_financial_data(symbol)
 
         context = {
             "symbol": symbol,
             "quote": quote,
             "history": history,
             "indicators": indicators,
+            "valuation": valuation,
+            "financials": financials,
         }
         self.memory.update(**context)
 
+        # 2. 辩论分析
         engine = DebateEngine(self.llm, callback=callback)
         debate_result = await engine.run(context, depth=depth)
 
@@ -57,6 +63,8 @@ class Orchestrator:
             "symbol": symbol,
             "quote": quote,
             "indicators": indicators,
+            "valuation": valuation,
+            "financials": financials,
             "analyses": [a["content"] for a in debate_result["analyses"]],
             "analyses_structured": debate_result["analyses"],
             "scenarios": debate_result["scenarios"],

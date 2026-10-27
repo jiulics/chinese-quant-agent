@@ -32,6 +32,8 @@ def _serialize_done(result: dict) -> dict:
             "change_pct": q.change_pct,
         },
         "indicators": result["indicators"],
+        "valuation": result.get("valuation", {}),
+        "financials": result.get("financials", {}),
         "analyses": result.get("analyses_structured", []),
     }
 

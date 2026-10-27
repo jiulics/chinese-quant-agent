@@ -59,3 +59,11 @@ class DataProvider(ABC):
     @abstractmethod
     async def get_stock_list(self) -> pd.DataFrame:
         """获取 A 股股票列表（代码、名称）。"""
+
+    async def get_valuation_data(self, symbol: str) -> dict:
+        """获取估值指标（PE/PB/PS/PCF）。默认返回空，子类按需覆盖。"""
+        return {}
+
+    async def get_financial_data(self, symbol: str) -> dict:
+        """获取财务数据（盈利/成长/偿债）。默认返回空，子类按需覆盖。"""
+        return {}

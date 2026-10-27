@@ -54,9 +54,18 @@ class BaostockProvider(DataProvider):
     def _login(self):
         if not self._available:
             raise RuntimeError("baostock 未安装")
-        lg = self._bs.login()
-        if lg.error_code != "0":
-            raise RuntimeError(f"BaoStock 登录失败: {lg.error_msg}")
+        import time
+        last_err = None
+        for attempt in range(3):
+            try:
+                lg = self._bs.login()
+                if lg.error_code == "0":
+                    return
+                last_err = lg.error_msg
+            except Exception as e:  # noqa: BLE001
+                last_err = str(e)
+            time.sleep(1.0 * (attempt + 1))
+        raise RuntimeError(f"BaoStock 登录失败: {last_err}")
 
     def _logout(self):
         if self._available:
@@ -101,6 +110,118 @@ class BaostockProvider(DataProvider):
                     amount=float(row[8]),
                     timestamp=row[0],
                 )
+            finally:
+                self._logout()
+
+        return await asyncio.to_thread(_fetch)
+
+
+    async def get_valuation_data(self, symbol: str) -> dict:
+        """获取最新估值指标（PE-TTM / PB / PS / PCF）。"""
+        def _fetch():
+            self._login()
+            try:
+                bs_code = _to_bs_code(symbol)
+                end = datetime.now().strftime("%Y-%m-%d")
+                start = (datetime.now() - timedelta(days=20)).strftime("%Y-%m-%d")
+                rs = self._bs.query_history_k_data_plus(
+                    bs_code, "date,code,close,peTTM,pbMRQ,psTTM,pcfNcfTTM",
+                    start_date=start, end_date=end, frequency="d", adjustflag="3",
+                )
+                if rs.error_code != "0":
+                    return {}
+                rows = []
+                while rs.next():
+                    rows.append(rs.get_row_data())
+                if not rows:
+                    return {}
+                row = rows[-1]
+
+                def f(x):
+                    try:
+                        return float(x)
+                    except (TypeError, ValueError):
+                        return None
+
+                return {
+                    "date": row[0],
+                    "close": f(row[2]),
+                    "pe_ttm": f(row[3]),
+                    "pb_mrq": f(row[4]),
+                    "ps_ttm": f(row[5]),
+                    "pcf_ttm": f(row[6]),
+                }
+            finally:
+                self._logout()
+
+        return await asyncio.to_thread(_fetch)
+
+    async def get_financial_data(self, symbol: str) -> dict:
+        """获取最新财务数据（盈利能力/成长/偿债），合并为单一字典。"""
+        def _fetch():
+            self._login()
+            try:
+                bs_code = _to_bs_code(symbol)
+                result: dict = {}
+
+                def f(x):
+                    try:
+                        return float(x)
+                    except (TypeError, ValueError):
+                        return None
+
+                # 盈利能力
+                rs = self._bs.query_profit_data(code=bs_code, year=2025, quarter=3)
+                if rs.error_code == "0":
+                    rows = []
+                    while rs.next():
+                        rows.append(rs.get_row_data())
+                    if rows:
+                        r = rows[-1]
+                        profit_fields = ["roeAvg", "npMargin", "gpMargin", "netProfit", "epsTTM", "MBRevenue", "totalShare", "liqaShare"]
+                        if hasattr(rs, "fields"):
+                            for k, v in zip(rs.fields, r):
+                                if k in profit_fields:
+                                    result[k] = f(v)
+                        else:
+                            result["roeAvg"] = f(r[3]); result["npMargin"] = f(r[4])
+                            result["gpMargin"] = f(r[5]); result["netProfit"] = f(r[6])
+                            result["epsTTM"] = f(r[7]); result["MBRevenue"] = f(r[8])
+
+                # 成长能力
+                rs = self._bs.query_growth_data(code=bs_code, year=2025, quarter=3)
+                if rs.error_code == "0":
+                    rows = []
+                    while rs.next():
+                        rows.append(rs.get_row_data())
+                    if rows:
+                        r = rows[-1]
+                        growth_fields = ["YOYEquity", "YOYAsset", "YOYNI", "YOYEPSBasic", "YOYPNI"]
+                        if hasattr(rs, "fields"):
+                            for k, v in zip(rs.fields, r):
+                                if k in growth_fields:
+                                    result[k] = f(v)
+                        else:
+                            result["YOYNI"] = f(r[3]); result["YOYEPSBasic"] = f(r[4]); result["YOYPNI"] = f(r[5])
+
+                # 偿债能力
+                rs = self._bs.query_balance_data(code=bs_code, year=2025, quarter=3)
+                if rs.error_code == "0":
+                    rows = []
+                    while rs.next():
+                        rows.append(rs.get_row_data())
+                    if rows:
+                        r = rows[-1]
+                        balance_fields = ["currentRatio", "quickRatio", "cashRatio", "liabilityToAsset", "assetToEquity"]
+                        if hasattr(rs, "fields"):
+                            for k, v in zip(rs.fields, r):
+                                if k in balance_fields:
+                                    result[k] = f(v)
+                        else:
+                            result["currentRatio"] = f(r[3]); result["quickRatio"] = f(r[4])
+                            result["liabilityToAsset"] = f(r[6])
+
+                return result
             finally:
                 self._logout()
 

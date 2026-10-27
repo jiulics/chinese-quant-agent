@@ -28,6 +28,8 @@ class AnalyzeResponse(BaseModel):
     symbol: str
     quote: QuoteOut
     indicators: dict
+    valuation: dict = {}
+    financials: dict = {}
     analyses: list[str]
     scenarios: str | None = None
     final_signal: str
