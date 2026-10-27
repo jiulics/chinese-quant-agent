@@ -60,6 +60,10 @@ class DataProvider(ABC):
     async def get_stock_list(self) -> pd.DataFrame:
         """获取 A 股股票列表（代码、名称）。"""
 
+    async def get_indices(self) -> list[dict]:
+        """获取主要大盘指数快照。默认返回空列表，子类按需覆盖。"""
+        return []
+
     async def get_valuation_data(self, symbol: str) -> dict:
         """获取估值指标（PE/PB/PS/PCF）。默认返回空，子类按需覆盖。"""
         return {}

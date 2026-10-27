@@ -116,6 +116,66 @@ class BaostockProvider(DataProvider):
         return await asyncio.to_thread(_fetch)
 
 
+
+    # 大盘指数代码映射
+    _INDEX_MAP: dict[str, tuple[str, str]] = {
+        "000001": ("sh.000001", "上证指数"),
+        "399001": ("sz.399001", "深证成指"),
+        "399006": ("sz.399006", "创业板指"),
+        "000300": ("sh.000300", "沪深300"),
+        "000016": ("sh.000016", "上证50"),
+        "399905": ("sz.399905", "中证500"),
+        "000688": ("sh.000688", "科创50"),
+    }
+
+    async def get_indices(self) -> list[dict]:
+        """获取主要大盘指数的实时（最新交易日）快照。"""
+        def _fetch():
+            self._login()
+            try:
+                end = datetime.now().strftime("%Y-%m-%d")
+                start = (datetime.now() - timedelta(days=15)).strftime("%Y-%m-%d")
+                results = []
+                for code, (bs_code, name) in self._INDEX_MAP.items():
+                    try:
+                        rs = self._bs.query_history_k_data_plus(
+                            bs_code, "date,code,close,preclose,volume,amount,pctChg",
+                            start_date=start, end_date=end, frequency="d", adjustflag="3",
+                        )
+                        if rs.error_code != "0":
+                            continue
+                        rows = []
+                        while rs.next():
+                            rows.append(rs.get_row_data())
+                        if not rows:
+                            continue
+                        row = rows[-1]
+
+                        def f(x):
+                            try:
+                                return float(x)
+                            except (TypeError, ValueError):
+                                return None
+
+                        results.append({
+                            "symbol": code,
+                            "name": name,
+                            "close": f(row[2]),
+                            "preclose": f(row[3]),
+                            "change": f(row[2]) - f(row[3]) if f(row[2]) is not None and f(row[3]) is not None else None,
+                            "change_pct": f(row[6]),
+                            "volume": f(row[4]),
+                            "amount": f(row[5]),
+                            "date": row[0],
+                        })
+                    except Exception:  # noqa: BLE001
+                        continue
+                return results
+            finally:
+                self._logout()
+
+        return await asyncio.to_thread(_fetch)
+
     async def get_valuation_data(self, symbol: str) -> dict:
         """获取最新估值指标（PE-TTM / PB / PS / PCF）。"""
         def _fetch():

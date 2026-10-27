@@ -25,6 +25,14 @@ def build_router(data: DataProvider, mock_data: DataProvider) -> APIRouter:
             raise HTTPException(status_code=500, detail=f"搜索失败: {e}")
         return [StockItem(symbol=it["symbol"], name=it["name"]) for it in matched]
 
+    @router.get("/market/indices")
+    async def market_indices():
+        """返回主要大盘指数快照。"""
+        try:
+            return await data.get_indices()
+        except Exception:  # noqa: BLE001
+            return []
+
     @router.get("/stocks", response_model=list[StockItem])
     async def stocks(q: str | None = None) -> list[StockItem]:
         try:

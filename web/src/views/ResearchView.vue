@@ -5,6 +5,8 @@
       <p>多智能体辩论式分析 · 分析师依次登场，实时呈现推理过程</p>
     </div>
 
+    <MarketBoard />
+
     <StockSearchBar
       v-model:symbol="symbol"
       v-model:depth="depth"
@@ -50,13 +52,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { useAnalysisStore } from '@/stores/analysis'
 import StockSearchBar from '@/components/StockSearchBar.vue'
 import AgentCard from '@/components/AgentCard.vue'
 import SignalPanel from '@/components/SignalPanel.vue'
+import MarketBoard from '@/components/MarketBoard.vue'
 
 const store = useAnalysisStore()
+const route = useRoute()
 const symbol = ref('')
 const depth = ref(3)
 const useMock = ref(false)
@@ -68,6 +73,14 @@ function start() {
   if (!symbol.value.trim()) return
   store.run(symbol.value.trim(), depth.value, useMock.value)
 }
+
+onMounted(() => {
+  const q = route.query.symbol as string | undefined
+  if (q) {
+    symbol.value = q
+    start()
+  }
+})
 </script>
 
 <style scoped>

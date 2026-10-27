@@ -32,6 +32,7 @@ import { useRoute } from 'vue-router'
 const route = useRoute()
 
 const navItems = [
+  { path: '/', label: '市场总览', icon: 'Odometer' },
   { path: '/research', label: '单股研究', icon: 'DataAnalysis' },
   { path: '/general', label: '通用研究', icon: 'Document' },
   { path: '/screener', label: '股票筛选', icon: 'Filter' },

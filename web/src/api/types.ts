@@ -28,6 +28,18 @@ export interface StockItem {
   name: string
 }
 
+export interface MarketIndex {
+  symbol: string
+  name: string
+  close: number
+  preclose: number
+  change: number
+  change_pct: number
+  volume: number
+  amount: number
+  date: string
+}
+
 export type StreamEvent =
   | { type: 'stage'; stage: string; message: string }
   | { type: 'agent_start'; role: string; label?: string }

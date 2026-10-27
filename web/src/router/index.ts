@@ -3,7 +3,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: '/', redirect: '/research' },
+    { path: '/', name: 'dashboard', component: () => import('../views/DashboardView.vue'), meta: { title: '市场总览' } },
     { path: '/research', name: 'research', component: () => import('../views/ResearchView.vue'), meta: { title: '单股研究' } },
     { path: '/general', name: 'general', component: () => import('../views/GeneralView.vue'), meta: { title: '通用研究' } },
     { path: '/screener', name: 'screener', component: () => import('../views/ScreenerView.vue'), meta: { title: '股票筛选' } },

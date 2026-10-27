@@ -1,8 +1,13 @@
 import { http } from './http'
-import type { AnalyzeResult, StockItem } from './types'
+import type { AnalyzeResult, StockItem, MarketIndex } from './types'
 
 export async function analyzeStock(symbol: string, depth = 3, useMock = false): Promise<AnalyzeResult> {
   const { data } = await http.post<AnalyzeResult>('/analyze', { symbol, depth, use_mock: useMock })
+  return data
+}
+
+export async function getMarketIndices(): Promise<MarketIndex[]> {
+  const { data } = await http.get<MarketIndex[]>('/market/indices')
   return data
 }
 
