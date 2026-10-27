@@ -21,7 +21,7 @@
       </el-radio-group>
     </div>
 
-    <el-switch :model-value="useMock" active-text="演示数据" class="mock-switch" @update:model-value="$emit('update:useMock', $event)" />
+    <el-switch :model-value="useMock" active-text="演示(模拟)" inactive-text="真实行情" class="mock-switch" @update:model-value="$emit('update:useMock', $event)" />
 
     <el-button type="primary" :loading="loading" class="start-btn" @click="$emit('start')">
       <el-icon v-if="!loading"><CaretRight /></el-icon>

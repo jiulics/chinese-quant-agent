@@ -1,17 +1,64 @@
 """各角色 Agent 的输入 prompt 构造。
 
 将 prompt 逻辑从引擎中抽离，便于单独维护与测试。
+同时负责把行情/指标等结构化数据格式化为 LLM 易读的文本。
 """
 from __future__ import annotations
 
+import math
 from typing import Any
+
+
+def _fmt_num(v: Any, nd: int = 2) -> str:
+    """格式化数字，NaN/None 显示为 '-'。"""
+    if v is None:
+        return "-"
+    try:
+        f = float(v)
+        if math.isnan(f):
+            return "-"
+        return f"{f:.{nd}f}"
+    except (TypeError, ValueError):
+        return str(v)
+
+
+def _fmt_quote(quote: Any) -> str:
+    """格式化行情快照为简洁可读文本。"""
+    if quote is None:
+        return "（无实时行情）"
+    if hasattr(quote, "price"):  # StockQuote dataclass
+        return (
+            f"{getattr(quote, 'name', '')}（{getattr(quote, 'symbol', '')}）"
+            f"最新价 {_fmt_num(getattr(quote, 'price', None))}，"
+            f"涨跌 {_fmt_num(getattr(quote, 'change', None))}"
+            f"（{_fmt_num(getattr(quote, 'change_pct', None))}%），"
+            f"今开 {_fmt_num(getattr(quote, 'open', None))}，"
+            f"最高 {_fmt_num(getattr(quote, 'high', None))}，"
+            f"最低 {_fmt_num(getattr(quote, 'low', None))}，"
+            f"成交量 {_fmt_num(getattr(quote, 'volume', None), 0)}，"
+            f"成交额 {_fmt_num(getattr(quote, 'amount', None), 0)}"
+        )
+    return str(quote)
+
+
+def _fmt_indicators(ind: dict) -> str:
+    """格式化技术指标字典为紧凑可读文本。"""
+    if not ind:
+        return "（无技术指标）"
+    parts = []
+    for k, v in ind.items():
+        if k == "近5日收盘":
+            parts.append(f"{k}: [{', '.join(_fmt_num(x) for x in v)}]")
+        else:
+            parts.append(f"{k}: {_fmt_num(v)}")
+    return "；".join(parts)
 
 
 def build_prompt(role: str, context: dict) -> str:
     """根据角色名构造输入 prompt。"""
     symbol = context.get("symbol", "未知")
-    quote = context.get("quote")
-    indicators = context.get("indicators", {})
+    quote = _fmt_quote(context.get("quote"))
+    indicators = _fmt_indicators(context.get("indicators", {}))
 
     if role == "基本面分析师":
         return (

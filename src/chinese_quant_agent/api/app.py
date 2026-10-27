@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config.settings import get_settings
 
-from ..data import AkshareProvider, MockProvider
+from ..data import AutoProvider, MockProvider
 from ..llm import build_client_from_settings
 from ..memory import MemoryStore
 from ..skills import build_builtin_skills
@@ -40,23 +40,23 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # 组装依赖
-    akshare_data = AkshareProvider()
+    # 组装依赖：real_data 优先真实行情（BaoStock->AKShare->Mock 自动回退）
+    real_data = AutoProvider()
     mock_data = MockProvider()
     llm = build_client_from_settings(settings)
     memory = MemoryStore()
-    skills = build_builtin_skills(mock_data)
+    skills = build_builtin_skills(real_data)
 
     @app.get("/api/health")
     async def health() -> dict:
-        return {"status": "ok", "version": "0.2.0"}
+        return {"status": "ok", "version": "0.3.0", "data_source": real_data.active_source}
 
     # 注册全部路由
-    app.include_router(build_analyze_router(llm, akshare_data, mock_data))
-    app.include_router(build_stocks_router(akshare_data, mock_data))
-    app.include_router(build_research_router(llm, akshare_data, mock_data))
-    app.include_router(build_assistant_router(llm, akshare_data, mock_data, memory))
-    app.include_router(build_trading_router(akshare_data, mock_data, skills))
+    app.include_router(build_analyze_router(llm, real_data, mock_data))
+    app.include_router(build_stocks_router(real_data, mock_data))
+    app.include_router(build_research_router(llm, real_data, mock_data))
+    app.include_router(build_assistant_router(llm, real_data, mock_data, memory))
+    app.include_router(build_trading_router(real_data, mock_data, skills))
 
     return app
 

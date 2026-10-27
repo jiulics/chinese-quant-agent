@@ -21,7 +21,7 @@
 
     <div class="sidebar-footer">
       <div class="status-dot"></div>
-      <span>v0.2.0 · 全功能版</span>
+      <span>v0.3.0 · 真实行情版</span>
     </div>
   </aside>
 </template>

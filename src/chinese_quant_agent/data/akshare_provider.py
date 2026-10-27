@@ -25,6 +25,8 @@ def _normalize_symbol(symbol: str) -> str:
 class AkshareProvider(DataProvider):
     """基于 akshare 的 A 股数据源。"""
 
+    available = True
+
     def __init__(self, cache_ttl: float = 60.0) -> None:
         self._cache = TTLCache(ttl=cache_ttl)
         self._spot_key = "__spot_em__"

@@ -32,6 +32,7 @@ dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
     "sse-starlette>=2.1.0",
+    "baostock>=0.9.4",
 ]
 
 [project.optional-dependencies]

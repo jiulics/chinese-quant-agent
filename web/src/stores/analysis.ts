@@ -7,6 +7,8 @@ export interface AgentProgress {
   label: string
   content: string
   done: boolean
+  active: boolean      // 是否正在流式输出（当前焦点）
+  order: number        // 出现顺序
 }
 
 export const useAnalysisStore = defineStore('analysis', () => {
@@ -21,6 +23,7 @@ export const useAnalysisStore = defineStore('analysis', () => {
   const quote = ref<any>(null)
   const indicators = ref<Record<string, any>>({})
   const error = ref<string | null>(null)
+  const activeRole = ref('')   // 当前正在流式的角色
 
   let cancelFn: (() => void) | null = null
 
@@ -42,12 +45,20 @@ export const useAnalysisStore = defineStore('analysis', () => {
     quote.value = null
     indicators.value = {}
     error.value = null
+    activeRole.value = ''
   }
 
-  function ensureAgent(role: string, label: string) {
+  function ensureAgent(role: string, label: string): AgentProgress {
     let a = agents.value.find((x) => x.role === role)
     if (!a) {
-      a = { role, label: label || ROLE_LABELS[role] || role, content: '', done: false }
+      a = {
+        role,
+        label: label || ROLE_LABELS[role] || role,
+        content: '',
+        done: false,
+        active: false,
+        order: agents.value.length,
+      }
       agents.value.push(a)
     }
     return a
@@ -62,6 +73,8 @@ export const useAnalysisStore = defineStore('analysis', () => {
       case 'agent_start': {
         const a = ensureAgent(ev.role, ev.label || ROLE_LABELS[ev.role] || ev.role)
         a.done = false
+        a.active = true
+        activeRole.value = ev.role
         break
       }
       case 'agent_delta': {
@@ -73,6 +86,8 @@ export const useAnalysisStore = defineStore('analysis', () => {
         const a = ensureAgent(ev.role, '')
         a.content = ev.content
         a.done = true
+        a.active = false
+        if (activeRole.value === ev.role) activeRole.value = ''
         break
       }
       case 'final':
@@ -83,16 +98,6 @@ export const useAnalysisStore = defineStore('analysis', () => {
         scenarios.value = ev.scenarios ?? null
         quote.value = ev.quote
         indicators.value = ev.indicators
-        if (ev.analyses) {
-          ev.analyses.forEach((an) => {
-            const key = Object.keys(ROLE_LABELS).find((k) => ROLE_LABELS[k] === an.role)
-            if (key) {
-              const a = ensureAgent(key, an.role)
-              a.content = an.content
-              a.done = true
-            }
-          })
-        }
         break
       case 'error':
         error.value = ev.message
@@ -126,6 +131,6 @@ export const useAnalysisStore = defineStore('analysis', () => {
   return {
     loading, currentSymbol, depth, stage, stageMessage,
     agents, scenarios, finalSignal, quote, indicators, error,
-    run, cancel, reset,
+    activeRole, run, cancel, reset,
   }
 })

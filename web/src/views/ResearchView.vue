@@ -2,7 +2,7 @@
   <div class="research">
     <div class="page-head">
       <h1>单股研究</h1>
-      <p>多智能体辩论式分析 · 实时呈现推理过程</p>
+      <p>多智能体辩论式分析 · 分析师依次登场，实时呈现推理过程</p>
     </div>
 
     <StockSearchBar
@@ -23,7 +23,11 @@
       </div>
     </transition>
 
-    <div v-if="store.agents.length" class="agents-grid">
+    <div v-if="store.agents.length" class="agents-list">
+      <div class="list-head">
+        <span>分析师辩论序列</span>
+        <span class="progress">{{ doneCount }} / {{ store.agents.length }}</span>
+      </div>
       <AgentCard v-for="a in store.agents" :key="a.role" :agent="a" />
     </div>
 
@@ -46,7 +50,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useAnalysisStore } from '@/stores/analysis'
 import StockSearchBar from '@/components/StockSearchBar.vue'
 import AgentCard from '@/components/AgentCard.vue'
@@ -55,8 +59,10 @@ import SignalPanel from '@/components/SignalPanel.vue'
 const store = useAnalysisStore()
 const symbol = ref('')
 const depth = ref(3)
-const useMock = ref(true)
+const useMock = ref(false)
 const hot = ['600519', '000001', '300750', '601318']
+
+const doneCount = computed(() => store.agents.filter((a) => a.done).length)
 
 function start() {
   if (!symbol.value.trim()) return
@@ -65,7 +71,7 @@ function start() {
 </script>
 
 <style scoped>
-.research { max-width: 1100px; margin: 0 auto; }
+.research { max-width: 860px; margin: 0 auto; }
 .page-head h1 { font-size: 24px; font-weight: 700; margin-bottom: 4px; }
 .page-head p { color: var(--text-dim); font-size: 13px; margin-bottom: 20px; }
 .stage-banner {
@@ -78,7 +84,12 @@ function start() {
 .stage-title { font-weight: 600; font-size: 14px; }
 .stage-msg { color: var(--text-dim); font-size: 12px; margin-top: 2px; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.agents-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.agents-list { display: flex; flex-direction: column; gap: 12px; }
+.list-head {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 13px; color: var(--text-dim); padding: 0 4px;
+}
+.progress { font-weight: 600; color: var(--primary); }
 .err { margin-top: 16px; }
 .empty { text-align: center; padding: 80px 0; color: var(--text-dim); }
 .empty p { margin: 16px 0; }
