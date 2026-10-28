@@ -65,6 +65,33 @@ def build_router(data: DataProvider, mock_data: DataProvider, tencent: TencentPr
             s = close.rolling(window=n, min_periods=n).mean()
             return [None if (isinstance(v, float) and math.isnan(v)) else round(float(v), 3) for v in s]
 
+        def _seq(s: pd.Series) -> list:
+            return [None if (isinstance(v, float) and math.isnan(v)) else round(float(v), 4) for v in s]
+
+        # MACD
+        ema12 = close.ewm(span=12, adjust=False).mean()
+        ema26 = close.ewm(span=26, adjust=False).mean()
+        dif = ema12 - ema26
+        dea = dif.ewm(span=9, adjust=False).mean()
+        macd = (dif - dea) * 2
+
+        # KDJ
+        low_n = df["low"].rolling(window=9, min_periods=9).min()
+        high_n = df["high"].rolling(window=9, min_periods=9).max()
+        rsv = (close - low_n) / (high_n - low_n).replace(0, pd.NA) * 100
+        k = rsv.ewm(com=2, adjust=False).mean()
+        d = k.ewm(com=2, adjust=False).mean()
+        j = 3 * k - 2 * d
+
+        # RSI14
+        delta = close.diff()
+        gain = delta.clip(lower=0)
+        loss = -delta.clip(upper=0)
+        avg_gain = gain.ewm(alpha=1 / 14, adjust=False).mean()
+        avg_loss = loss.ewm(alpha=1 / 14, adjust=False).mean()
+        rs = avg_gain / avg_loss.replace(0, pd.NA)
+        rsi = 100 - (100 / (1 + rs))
+
         klines = []
         for _, r in df.iterrows():
             klines.append({
@@ -86,6 +113,9 @@ def build_router(data: DataProvider, mock_data: DataProvider, tencent: TencentPr
             "ma10": ma(10),
             "ma20": ma(20),
             "ma60": ma(60),
+            "macd": {"dif": _seq(dif), "dea": _seq(dea), "macd": _seq(macd)},
+            "kdj": {"k": _seq(k), "d": _seq(d), "j": _seq(j)},
+            "rsi": _seq(rsi),
         }
 
     @router.get("/stocks/{symbol}/realtime")

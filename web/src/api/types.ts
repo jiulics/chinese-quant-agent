@@ -39,6 +39,9 @@ export interface KlineItem {
   pct_chg: number | null
 }
 
+export interface MacdSeries { dif: (number | null)[]; dea: (number | null)[]; macd: (number | null)[] }
+export interface KdjSeries { k: (number | null)[]; d: (number | null)[]; j: (number | null)[] }
+
 export interface KlineData {
   symbol: string
   name: string
@@ -48,6 +51,9 @@ export interface KlineData {
   ma10: (number | null)[]
   ma20: (number | null)[]
   ma60: (number | null)[]
+  macd?: MacdSeries
+  kdj?: KdjSeries
+  rsi?: (number | null)[]
 }
 
 export interface IntradayKline {

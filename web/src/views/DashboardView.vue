@@ -26,6 +26,24 @@
       </div>
     </div>
 
+    <div v-if="favs.length" class="hot-section watchlist-section">
+      <div class="section-head">
+        <el-icon><StarFilled /></el-icon>
+        <span>我的自选</span>
+      </div>
+      <div class="hot-grid">
+        <div
+          v-for="s in favs"
+          :key="s"
+          class="hot-card"
+          @click="goResearch(s)"
+        >
+          <div class="hot-symbol">{{ s }}</div>
+          <el-icon class="hot-arrow"><Right /></el-icon>
+        </div>
+      </div>
+    </div>
+
     <div class="tip">
       <el-icon><InfoFilled /></el-icon>
       <span>点击任意标的进入多智能体辩论式分析；以上指数为最新交易日收盘快照。</span>
@@ -34,10 +52,24 @@
 </template>
 
 <script setup lang="ts">
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import MarketBoard from '@/components/MarketBoard.vue'
 
 const router = useRouter()
+const FAV_KEY = 'watchlist'
+const favs = ref<string[]>(JSON.parse(localStorage.getItem(FAV_KEY) || '[]'))
+
+function refreshFavs() {
+  favs.value = JSON.parse(localStorage.getItem(FAV_KEY) || '[]')
+}
+
+onMounted(() => {
+  window.addEventListener('watchlist-changed', refreshFavs)
+})
+onUnmounted(() => {
+  window.removeEventListener('watchlist-changed', refreshFavs)
+})
 
 const hotStocks = [
   { symbol: '600519', name: '贵州茅台' },
