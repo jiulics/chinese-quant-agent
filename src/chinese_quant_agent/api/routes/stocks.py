@@ -6,12 +6,12 @@ import logging
 from fastapi import APIRouter, HTTPException
 
 from ..schemas import StockItem
-from ...data import DataProvider
+from ...data import DataProvider, TencentProvider
 
 logger = logging.getLogger(__name__)
 
 
-def build_router(data: DataProvider, mock_data: DataProvider) -> APIRouter:
+def build_router(data: DataProvider, mock_data: DataProvider, tencent: TencentProvider | None = None) -> APIRouter:
     """构建股票数据路由。"""
     router = APIRouter(prefix="/api", tags=["stocks"])
 
@@ -27,7 +27,16 @@ def build_router(data: DataProvider, mock_data: DataProvider) -> APIRouter:
 
     @router.get("/market/indices")
     async def market_indices():
-        """返回主要大盘指数快照。"""
+        """返回主要大盘指数快照（优先盘中实时，回退日频）。"""
+        # 1. 优先腾讯盘中实时
+        if tencent is not None:
+            try:
+                live = await tencent.get_realtime_indices()
+                if live:
+                    return live
+            except Exception as e:  # noqa: BLE001
+                logger.warning("腾讯实时指数获取失败，回退 BaoStock: %s", e)
+        # 2. 回退 BaoStock 日频
         try:
             return await data.get_indices()
         except Exception:  # noqa: BLE001

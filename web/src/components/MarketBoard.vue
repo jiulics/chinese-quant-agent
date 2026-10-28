@@ -3,7 +3,8 @@
     <div class="board-head">
       <el-icon><DataLine /></el-icon>
       <span>大盘指数</span>
-      <span class="date">{{ indices[0]?.date }}</span>
+      <span v-if="isLive" class="live-tag">● 盘中实时</span>
+      <span class="date">{{ timeLabel }}</span>
       <el-icon class="refresh" :class="{ spinning: loading }" @click="load"><Refresh /></el-icon>
     </div>
     <div class="index-grid">
@@ -14,7 +15,7 @@
         :class="{ up: idx.change_pct >= 0, down: idx.change_pct < 0 }"
       >
         <div class="idx-name">{{ idx.name }}</div>
-        <div class="idx-close">{{ fmt(idx.close) }}</div>
+        <div class="idx-close">{{ fmt(idx.price ?? idx.close) }}</div>
         <div class="idx-change">
           {{ idx.change_pct >= 0 ? '+' : '' }}{{ fmt(idx.change_pct) }}%
           <span class="idx-diff">{{ idx.change_pct >= 0 ? '+' : '' }}{{ fmt(idx.change) }}</span>
@@ -25,11 +26,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { getMarketIndices, type MarketIndex } from '@/api'
 
 const indices = ref<MarketIndex[]>([])
 const loading = ref(false)
+let timer: ReturnType<typeof setInterval> | null = null
 
 async function load() {
   loading.value = true
@@ -42,6 +44,16 @@ async function load() {
   }
 }
 
+function fmtTs(ts?: string): string {
+  if (!ts) return ''
+  const s = String(ts)
+  if (s.length === 14) {
+    // 20261028093303 -> 09:33:03
+    return s.slice(8, 10) + ':' + s.slice(10, 12) + ':' + s.slice(12, 14)
+  }
+  return s
+}
+
 function fmt(v: number | null | undefined): string {
   if (v === null || v === undefined) return '-'
   const n = Number(v)
@@ -50,7 +62,23 @@ function fmt(v: number | null | undefined): string {
   return n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-onMounted(load)
+const isLive = computed(() => indices.value.length > 0 && !!indices.value[0]?.timestamp)
+const timeLabel = computed(() => {
+  if (!indices.value.length) return ''
+  const ts = indices.value[0].timestamp
+  const date = indices.value[0].date
+  return ts ? fmtTs(ts) : date || ''
+})
+
+onMounted(() => {
+  load()
+  // 每 30 秒自动刷新一次盘中实时行情
+  timer = setInterval(load, 30000)
+})
+
+onUnmounted(() => {
+  if (timer) clearInterval(timer)
+})
 </script>
 
 <style scoped>
@@ -63,7 +91,13 @@ onMounted(load)
   font-size: 13px; color: var(--text-dim); margin-bottom: 14px;
 }
 .board-head > span:first-of-type { color: var(--text); font-weight: 600; }
-.date { margin-left: auto; font-size: 12px; }
+.live-tag {
+  margin-left: auto; font-size: 11px; font-weight: 600;
+  color: var(--down); background: rgba(103,194,58,0.12);
+  padding: 2px 8px; border-radius: 10px;
+}
+.live-tag::before { content: ''; }
+.date { font-size: 12px; margin-left: 8px; }
 .refresh { cursor: pointer; color: var(--text-dim); transition: color 0.2s; }
 .refresh:hover { color: var(--primary); }
 .spinning { animation: spin 1s linear infinite; }

@@ -31,13 +31,15 @@ export interface StockItem {
 export interface MarketIndex {
   symbol: string
   name: string
-  close: number
+  price?: number
+  close?: number
   preclose: number
   change: number
   change_pct: number
   volume: number
   amount: number
-  date: string
+  date?: string
+  timestamp?: string
 }
 
 export type StreamEvent =

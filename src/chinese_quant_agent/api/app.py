@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config.settings import get_settings
 
-from ..data import AutoProvider, MockProvider
+from ..data import AutoProvider, MockProvider, TencentProvider
 from ..llm import build_client_from_settings
 from ..memory import MemoryStore
 from ..skills import build_builtin_skills
@@ -43,6 +43,7 @@ def create_app() -> FastAPI:
     # 组装依赖：real_data 优先真实行情（BaoStock->AKShare->Mock 自动回退）
     real_data = AutoProvider()
     mock_data = MockProvider()
+    tencent = TencentProvider()
     llm = build_client_from_settings(settings)
     memory = MemoryStore()
     skills = build_builtin_skills(real_data)
@@ -53,7 +54,7 @@ def create_app() -> FastAPI:
 
     # 注册全部路由
     app.include_router(build_analyze_router(llm, real_data, mock_data))
-    app.include_router(build_stocks_router(real_data, mock_data))
+    app.include_router(build_stocks_router(real_data, mock_data, tencent))
     app.include_router(build_research_router(llm, real_data, mock_data))
     app.include_router(build_assistant_router(llm, real_data, mock_data, memory))
     app.include_router(build_trading_router(real_data, mock_data, skills))
