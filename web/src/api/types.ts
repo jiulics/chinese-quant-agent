@@ -28,6 +28,43 @@ export interface StockItem {
   name: string
 }
 
+export interface KlineItem {
+  date: string
+  open: number
+  high: number
+  low: number
+  close: number
+  volume: number
+  amount: number
+  pct_chg: number | null
+}
+
+export interface KlineData {
+  symbol: string
+  name: string
+  dates: string[]
+  klines: KlineItem[]
+  ma5: (number | null)[]
+  ma10: (number | null)[]
+  ma20: (number | null)[]
+  ma60: (number | null)[]
+}
+
+export interface RealtimeQuote {
+  symbol: string
+  name: string
+  price: number
+  preclose: number | null
+  open: number
+  change: number
+  change_pct: number
+  high: number
+  low: number
+  volume: number
+  amount: number
+  timestamp: string
+}
+
 export interface MarketIndex {
   symbol: string
   name: string

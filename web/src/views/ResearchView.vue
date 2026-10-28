@@ -15,6 +15,8 @@
       @start="start"
     />
 
+    <KlineChart v-if="symbol" :symbol="symbol" />
+
     <transition name="fade">
       <div v-if="store.stage" class="stage-banner">
         <el-icon class="stage-icon"><Loading /></el-icon>
@@ -59,6 +61,7 @@ import StockSearchBar from '@/components/StockSearchBar.vue'
 import AgentCard from '@/components/AgentCard.vue'
 import SignalPanel from '@/components/SignalPanel.vue'
 import MarketBoard from '@/components/MarketBoard.vue'
+import KlineChart from '@/components/KlineChart.vue'
 
 const store = useAnalysisStore()
 const route = useRoute()
