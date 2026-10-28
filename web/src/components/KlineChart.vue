@@ -41,7 +41,7 @@
           :key="opt.value"
           class="bar-btn"
           :class="{ active: indicator === opt.value }"
-          @click="indicator = opt.value; rerender()"
+          @click="switchIndicator(opt.value)"
         >{{ opt.label }}</span>
       </div>
     </div>
@@ -81,7 +81,16 @@ const indicatorOptions: Array<{ value: 'vol' | 'macd' | 'kdj' | 'rsi'; label: st
 
 let chart: echarts.ECharts | null = null
 let resizeHandler: (() => void) | null = null
-let cachedKline: KlineData | null = null
+
+// 多周期数据缓存：切换周期时命中缓存则零网络、瞬间切换
+interface CachedPeriod {
+  dates: string[]
+  klines: any[]
+  kd: KlineData | null   // 有均线/指标序列（日/周/月K）
+  isCandle: boolean
+}
+const periodCache = new Map<string, CachedPeriod>()
+let loadingPeriods = new Set<string>()
 
 // 自选股（localStorage）
 const FAV_KEY = 'watchlist'
@@ -94,7 +103,6 @@ function toggleFav() {
     favs.value = [...favs.value, props.symbol]
   }
   localStorage.setItem(FAV_KEY, JSON.stringify(favs.value))
-  // 通知其他组件（自选列表）刷新
   window.dispatchEvent(new CustomEvent('watchlist-changed'))
 }
 
@@ -123,73 +131,90 @@ function fmtTs(ts?: string): string {
 const UP = '#f56c6c'
 const DOWN = '#67c23a'
 
-function buildVolumeSeries(klines: any[]) {
-  return klines.map((k) => ({
-    value: k.volume,
-    itemStyle: { color: k.close >= k.open ? UP : DOWN },
-  }))
+function fmtTimeLabel(t: string): string {
+  if (t.length === 12) return t.slice(4, 6) + '-' + t.slice(6, 8) + ' ' + t.slice(8, 10) + ':' + t.slice(10, 12)
+  if (t.length === 4) return t.slice(0, 2) + ':' + t.slice(2, 4)
+  return t
 }
 
-function buildSubIndicator(ind: string, kd: KlineData | null, klines: any[]) {
-  if (ind === 'vol') {
-    return { legend: ['成交量'], series: [{ name: '成交量', type: 'bar', xAxisIndex: 1, yAxisIndex: 1, data: buildVolumeSeries(klines) }] }
+// ---- 数据加载（带缓存）----
+async function fetchPeriod(p: 'm5' | 'daily' | 'weekly' | 'monthly'): Promise<CachedPeriod> {
+  if (p === 'm5') {
+    const id: IntradayData = await getIntraday(props.symbol, 'm5')
+    const dates = id.times.map(fmtTimeLabel)
+    const klines = id.klines.map(k => ({ open: k.open, close: k.close, high: k.high, low: k.low, volume: k.volume }))
+    return { dates, klines, kd: null, isCandle: false }
   }
+  const kd: KlineData = await getKline(props.symbol, 250, p as any)
+  return { dates: kd.dates, klines: kd.klines, kd, isCandle: true }
+}
+
+// ---- 副图指标序列构建（只产 series，主图不动）----
+function buildSubSeries(ind: string, kd: KlineData | null, klines: any[]): any[] {
   if (ind === 'macd' && kd?.macd) {
-    return {
-      legend: ['DIF', 'DEA', 'MACD'],
-      series: [
-        { name: 'DIF', type: 'line', xAxisIndex: 1, yAxisIndex: 1, data: kd.macd.dif, showSymbol: false, lineStyle: { width: 1, color: '#e6a23c' } },
-        { name: 'DEA', type: 'line', xAxisIndex: 1, yAxisIndex: 1, data: kd.macd.dea, showSymbol: false, lineStyle: { width: 1, color: '#409eff' } },
-        { name: 'MACD', type: 'bar', xAxisIndex: 1, yAxisIndex: 1, data: kd.macd.macd, itemStyle: { color: (p: any) => (p.value >= 0 ? UP : DOWN) } },
-      ],
-    }
+    return [
+      { id: 'sub-dif', name: 'DIF', type: 'line', xAxisIndex: 1, yAxisIndex: 1, data: kd.macd.dif, showSymbol: false, lineStyle: { width: 1, color: '#e6a23c' } },
+      { id: 'sub-dea', name: 'DEA', type: 'line', xAxisIndex: 1, yAxisIndex: 1, data: kd.macd.dea, showSymbol: false, lineStyle: { width: 1, color: '#409eff' } },
+      { id: 'sub-macd', name: 'MACD', type: 'bar', xAxisIndex: 1, yAxisIndex: 1, data: kd.macd.macd, itemStyle: { color: (p: any) => (p.value >= 0 ? UP : DOWN) } },
+    ]
   }
   if (ind === 'kdj' && kd?.kdj) {
-    return {
-      legend: ['K', 'D', 'J'],
-      series: [
-        { name: 'K', type: 'line', xAxisIndex: 1, yAxisIndex: 1, data: kd.kdj.k, showSymbol: false, lineStyle: { width: 1, color: '#e6a23c' } },
-        { name: 'D', type: 'line', xAxisIndex: 1, yAxisIndex: 1, data: kd.kdj.d, showSymbol: false, lineStyle: { width: 1, color: '#409eff' } },
-        { name: 'J', type: 'line', xAxisIndex: 1, yAxisIndex: 1, data: kd.kdj.j, showSymbol: false, lineStyle: { width: 1, color: '#f56c6c' } },
-      ],
-    }
+    return [
+      { id: 'sub-k', name: 'K', type: 'line', xAxisIndex: 1, yAxisIndex: 1, data: kd.kdj.k, showSymbol: false, lineStyle: { width: 1, color: '#e6a23c' } },
+      { id: 'sub-d', name: 'D', type: 'line', xAxisIndex: 1, yAxisIndex: 1, data: kd.kdj.d, showSymbol: false, lineStyle: { width: 1, color: '#409eff' } },
+      { id: 'sub-j', name: 'J', type: 'line', xAxisIndex: 1, yAxisIndex: 1, data: kd.kdj.j, showSymbol: false, lineStyle: { width: 1, color: '#f56c6c' } },
+    ]
   }
   if (ind === 'rsi' && kd?.rsi) {
-    return {
-      legend: ['RSI14'],
-      series: [{ name: 'RSI14', type: 'line', xAxisIndex: 1, yAxisIndex: 1, data: kd.rsi, showSymbol: false, lineStyle: { width: 1, color: '#67c23a' } }],
-    }
+    return [
+      { id: 'sub-rsi', name: 'RSI14', type: 'line', xAxisIndex: 1, yAxisIndex: 1, data: kd.rsi, showSymbol: false, lineStyle: { width: 1, color: '#67c23a' } },
+    ]
   }
-  return { legend: ['成交量'], series: [{ name: '成交量', type: 'bar', xAxisIndex: 1, yAxisIndex: 1, data: buildVolumeSeries(klines) }] }
+  // 默认成交量
+  return [{
+    id: 'sub-vol', name: '成交量', type: 'bar', xAxisIndex: 1, yAxisIndex: 1,
+    data: klines.map((k) => ({ value: k.volume, itemStyle: { color: k.close >= k.open ? UP : DOWN } })),
+  }]
 }
 
-function renderChart(dates: string[], klines: any[], kd: KlineData | null, isCandle: boolean) {
+function subLegend(ind: string): string[] {
+  if (ind === 'macd') return ['DIF', 'DEA', 'MACD']
+  if (ind === 'kdj') return ['K', 'D', 'J']
+  if (ind === 'rsi') return ['RSI14']
+  return ['成交量']
+}
+
+// ---- 主图 series（含均线）----
+function buildMainSeries(cp: CachedPeriod): any[] {
+  if (!cp.isCandle) {
+    return [{
+      id: 'main-price', name: '价格', type: 'line', data: cp.klines.map(k => k.close),
+      showSymbol: false, smooth: true,
+      lineStyle: { width: 1.5, color: '#409eff' },
+      areaStyle: { color: 'rgba(64,158,255,0.08)' },
+    }]
+  }
+  const kd = cp.kd!
+  return [
+    { id: 'main-candle', name: 'K线', type: 'candlestick', data: cp.klines.map(k => [k.open, k.close, k.low, k.high]), itemStyle: { color: UP, color0: DOWN, borderColor: UP, borderColor0: DOWN } },
+    { id: 'ma5', name: 'MA5', type: 'line', data: kd.ma5, smooth: true, showSymbol: false, lineStyle: { width: 1 } },
+    { id: 'ma10', name: 'MA10', type: 'line', data: kd.ma10, smooth: true, showSymbol: false, lineStyle: { width: 1 } },
+    { id: 'ma20', name: 'MA20', type: 'line', data: kd.ma20, smooth: true, showSymbol: false, lineStyle: { width: 1 } },
+    { id: 'ma60', name: 'MA60', type: 'line', data: kd.ma60, smooth: true, showSymbol: false, lineStyle: { width: 1 } },
+  ]
+}
+
+function mainLegend(cp: CachedPeriod): string[] {
+  return cp.isCandle ? ['MA5', 'MA10', 'MA20', 'MA60'] : ['价格']
+}
+
+// ---- 完整渲染（首次/切周期时调用）----
+function renderFull(cp: CachedPeriod, ind: string) {
   if (!chartRef.value) return
   if (!chart) chart = echarts.init(chartRef.value)
 
-  const maSeries = kd && isCandle
-    ? [
-        { name: 'MA5', type: 'line', data: kd.ma5, smooth: true, showSymbol: false, lineStyle: { width: 1 } },
-        { name: 'MA10', type: 'line', data: kd.ma10, smooth: true, showSymbol: false, lineStyle: { width: 1 } },
-        { name: 'MA20', type: 'line', data: kd.ma20, smooth: true, showSymbol: false, lineStyle: { width: 1 } },
-        { name: 'MA60', type: 'line', data: kd.ma60, smooth: true, showSymbol: false, lineStyle: { width: 1 } },
-      ]
-    : []
-
-  const mainSeries: any[] = isCandle
-    ? [{
-        name: 'K线', type: 'candlestick', data: klines.map(k => [k.open, k.close, k.low, k.high]),
-        itemStyle: { color: UP, color0: DOWN, borderColor: UP, borderColor0: DOWN },
-      }, ...maSeries]
-    : [{
-        name: '价格', type: 'line', data: klines.map(k => k.close),
-        showSymbol: false, smooth: true,
-        lineStyle: { width: 1.5, color: '#409eff' },
-        areaStyle: { color: 'rgba(64,158,255,0.08)' },
-      }]
-
-  const sub = buildSubIndicator(indicator.value, kd, klines)
-  const legendData = [...(isCandle ? ['MA5', 'MA10', 'MA20', 'MA60'] : ['价格']), ...sub.legend]
+  const sub = buildSubSeries(ind, cp.kd, cp.klines)
+  const legendData = [...mainLegend(cp), ...subLegend(ind)]
 
   chart.setOption({
     backgroundColor: 'transparent',
@@ -198,75 +223,78 @@ function renderChart(dates: string[], klines: any[], kd: KlineData | null, isCan
     tooltip: {
       trigger: 'axis',
       axisPointer: { type: 'cross' },
-      backgroundColor: '#1a1e2a',
-      borderColor: '#2a2f3e',
-      textStyle: { color: '#e6e8ee' },
+      backgroundColor: '#1a1e2a', borderColor: '#2a2f3e', textStyle: { color: '#e6e8ee' },
     },
     grid: [
       { left: 60, right: 20, top: 30, height: '54%' },
       { left: 60, right: 20, top: '72%', height: '18%' },
     ],
     xAxis: [
-      { type: 'category', data: dates, gridIndex: 0, axisLine: { lineStyle: { color: '#2a2f3e' } }, axisLabel: { color: '#8b90a0' } },
-      { type: 'category', data: dates, gridIndex: 1, axisLabel: { show: false }, axisLine: { lineStyle: { color: '#2a2f3e' } } },
+      { type: 'category', data: cp.dates, gridIndex: 0, axisLine: { lineStyle: { color: '#2a2f3e' } }, axisLabel: { color: '#8b90a0' } },
+      { type: 'category', data: cp.dates, gridIndex: 1, axisLabel: { show: false }, axisLine: { lineStyle: { color: '#2a2f3e' } } },
     ],
     yAxis: [
       { scale: true, gridIndex: 0, axisLabel: { color: '#8b90a0' }, splitLine: { lineStyle: { color: '#1f2430' } } },
       { scale: true, gridIndex: 1, axisLabel: { color: '#8b90a0' }, splitLine: { show: false } },
     ],
     dataZoom: [
-      { type: 'inside', xAxisIndex: [0, 1], start: isCandle ? 60 : 0, end: 100 },
+      { type: 'inside', xAxisIndex: [0, 1], start: cp.isCandle ? 60 : 0, end: 100 },
       { type: 'slider', xAxisIndex: [0, 1], top: '94%', height: 18, textStyle: { color: '#8b90a0' } },
     ],
-    series: [...mainSeries, ...sub.series],
-  })
+    series: [...buildMainSeries(cp), ...sub],
+  }, { replaceMerge: ['series'] })
 }
 
-function fmtTimeLabel(t: string): string {
-  if (t.length === 12) return t.slice(4, 6) + '-' + t.slice(6, 8) + ' ' + t.slice(8, 10) + ':' + t.slice(10, 12)
-  if (t.length === 4) return t.slice(0, 2) + ':' + t.slice(2, 4)
-  return t
+// ---- 副图指标切换：只增量替换副图 series，主图零重建，毫秒级 ----
+function switchIndicator(ind: 'vol' | 'macd' | 'kdj' | 'rsi') {
+  if (ind === indicator.value) return
+  indicator.value = ind
+  if (!chart) return
+  const cp = periodCache.get(period.value)
+  if (!cp) return
+  const sub = buildSubSeries(ind, cp.kd, cp.klines)
+  const main = buildMainSeries(cp)
+  // 用 replaceMerge 按 id 精确替换：保留主图（有 id 的不动），副图按 id 增删
+  chart.setOption({
+    series: [...main, ...sub],
+    legend: { data: [...mainLegend(cp), ...subLegend(ind)] },
+  }, { replaceMerge: ['series'] })
 }
 
-async function loadIntraday() {
-  const id: IntradayData = await getIntraday(props.symbol, 'm5')
-  const dates = id.times.map(fmtTimeLabel)
-  const klines = id.klines.map(k => ({ open: k.open, close: k.close, high: k.high, low: k.low, volume: k.volume }))
-  cachedKline = null
-  renderChart(dates, klines, null, false)
-}
-
-async function loadKline() {
-  const kd: KlineData = await getKline(props.symbol, 250, period.value as any)
-  cachedKline = kd
-  renderChart(kd.dates, kd.klines, kd, true)
-}
-
-function rerender() {
-  if (period.value === 'm5') {
-    // 分时无 K线指标序列，直接重画当前
-    loadIntraday()
-  } else if (cachedKline) {
-    renderChart(cachedKline.dates, cachedKline.klines, cachedKline, true)
+// ---- 周期切换：命中缓存则同步渲染（零网络），否则拉取后缓存 ----
+async function switchPeriod(p: 'm5' | 'daily' | 'weekly' | 'monthly') {
+  if (p === period.value) return
+  period.value = p
+  const cached = periodCache.get(p)
+  if (cached) {
+    // 命中缓存：同步渲染，毫秒级
+    renderFull(cached, indicator.value)
+    return
+  }
+  if (loadingPeriods.has(p)) return
+  loadingPeriods.add(p)
+  try {
+    const cp = await fetchPeriod(p)
+    periodCache.set(p, cp)
+    if (period.value === p) renderFull(cp, indicator.value)
+  } catch { /* 静默失败 */ } finally {
+    loadingPeriods.delete(p)
   }
 }
 
 async function load() {
   if (!props.symbol) return
+  // 换股票：清空缓存
+  periodCache.clear()
+  loadingPeriods.clear()
   try {
     const q = await getRealtimeQuote(props.symbol)
     quote.value = q || null
     await nextTick()
-    if (period.value === 'm5') await loadIntraday()
-    else await loadKline()
+    const cp = await fetchPeriod(period.value)
+    periodCache.set(period.value, cp)
+    renderFull(cp, indicator.value)
   } catch { /* 静默失败 */ }
-}
-
-async function switchPeriod(p: 'm5' | 'daily' | 'weekly' | 'monthly') {
-  period.value = p
-  await nextTick()
-  if (p === 'm5') await loadIntraday()
-  else await loadKline()
 }
 
 onMounted(() => {
@@ -279,6 +307,7 @@ onUnmounted(() => {
   if (resizeHandler) window.removeEventListener('resize', resizeHandler)
   chart?.dispose()
   chart = null
+  periodCache.clear()
 })
 
 watch(() => props.symbol, () => load())
