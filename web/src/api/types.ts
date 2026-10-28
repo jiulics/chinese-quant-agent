@@ -50,6 +50,22 @@ export interface KlineData {
   ma60: (number | null)[]
 }
 
+export interface IntradayKline {
+  time: string
+  open: number
+  close: number
+  high: number
+  low: number
+  volume: number
+}
+
+export interface IntradayData {
+  symbol: string
+  period: string
+  times: string[]
+  klines: IntradayKline[]
+}
+
 export interface RealtimeQuote {
   symbol: string
   name: string

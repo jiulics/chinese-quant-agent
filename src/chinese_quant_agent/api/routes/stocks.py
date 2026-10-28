@@ -47,10 +47,13 @@ def build_router(data: DataProvider, mock_data: DataProvider, tencent: TencentPr
             return []
 
     @router.get("/stocks/{symbol}/kline")
-    async def stock_kline(symbol: str, days: int = 250):
-        """返回个股历史 K 线（含 MA5/MA10/MA20/MA60 均线），供前端绘图。"""
+    async def stock_kline(symbol: str, days: int = 250, period: str = "daily"):
+        """返回个股历史 K 线（含 MA5/MA10/MA20/MA60 均线），供前端绘图。
+
+        period: daily / weekly / monthly。
+        """
         try:
-            hist = await data.get_history(symbol)
+            hist = await data.get_history(symbol, period=period)
         except Exception as e:  # noqa: BLE001
             logger.exception("获取 K 线失败")
             raise HTTPException(status_code=500, detail=f"获取K线失败: {e}")
@@ -105,6 +108,23 @@ def build_router(data: DataProvider, mock_data: DataProvider, tencent: TencentPr
             }
         except Exception:  # noqa: BLE001
             return {}
+
+    @router.get("/stocks/{symbol}/intraday")
+    async def stock_intraday(symbol: str, period: str = "m5"):
+        """返回个股分时/分钟K线（盘中）。period: m1 / m5。"""
+        if tencent is not None:
+            try:
+                rows = await tencent.get_intraday(symbol, period=period)
+                if rows:
+                    return {
+                        "symbol": symbol,
+                        "period": period,
+                        "times": [r["time"] for r in rows],
+                        "klines": rows,
+                    }
+            except Exception as e:  # noqa: BLE001
+                logger.warning("腾讯分时获取失败: %s", e)
+        return {"symbol": symbol, "period": period, "times": [], "klines": []}
 
     @router.get("/stocks", response_model=list[StockItem])
     async def stocks(q: str | None = None) -> list[StockItem]:

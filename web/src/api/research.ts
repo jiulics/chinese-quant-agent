@@ -1,13 +1,18 @@
 import { http } from './http'
-import type { AnalyzeResult, StockItem, MarketIndex, KlineData, RealtimeQuote } from './types'
+import type { AnalyzeResult, StockItem, MarketIndex, KlineData, RealtimeQuote, IntradayData } from './types'
 
 export async function analyzeStock(symbol: string, depth = 3, useMock = false): Promise<AnalyzeResult> {
   const { data } = await http.post<AnalyzeResult>('/analyze', { symbol, depth, use_mock: useMock })
   return data
 }
 
-export async function getKline(symbol: string, days = 250): Promise<KlineData> {
-  const { data } = await http.get<KlineData>(`/stocks/${symbol}/kline`, { params: { days } })
+export async function getKline(symbol: string, days = 250, period = 'daily'): Promise<KlineData> {
+  const { data } = await http.get<KlineData>(`/stocks/${symbol}/kline`, { params: { days, period } })
+  return data
+}
+
+export async function getIntraday(symbol: string, period = 'm5'): Promise<IntradayData> {
+  const { data } = await http.get<IntradayData>(`/stocks/${symbol}/intraday`, { params: { period } })
   return data
 }
 

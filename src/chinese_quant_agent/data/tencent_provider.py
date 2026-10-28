@@ -97,6 +97,43 @@ class TencentProvider:
 
         return await asyncio.to_thread(_fetch)
 
+    async def get_intraday(self, symbol: str, period: str = "m5", count: int = 320) -> list[dict]:
+        """获取个股分时/分钟K线（盘中）。
+
+        period: m1=1分钟, m5=5分钟。
+        返回 [{"time": "YYYYMMDDHHMM", "open","close","high","low","volume"}]
+        """
+        def _fetch():
+            code = _to_tencent_code(symbol)
+            url = f"http://ifzq.gtimg.cn/appstock/app/kline/mkline?param={code},{period},,{count}"
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                raw = resp.read().decode("utf-8", errors="replace")
+            import json
+            data = json.loads(raw)
+            node = data.get("data", {}).get(code, {})
+            rows = node.get(period, []) or node.get("m5", []) or node.get("m1", [])
+            result = []
+            for r in rows:
+                if len(r) < 6:
+                    continue
+                def f(x):
+                    try:
+                        return float(x)
+                    except (TypeError, ValueError):
+                        return None
+                result.append({
+                    "time": str(r[0]),
+                    "open": f(r[1]),
+                    "close": f(r[2]),
+                    "high": f(r[3]),
+                    "low": f(r[4]),
+                    "volume": f(r[5]),
+                })
+            return result
+
+        return await asyncio.to_thread(_fetch)
+
     async def get_realtime_quote(self, symbol: str) -> dict | None:
         """获取单只股票盘中实时快照。"""
         def _fetch():

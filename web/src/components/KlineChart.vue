@@ -19,6 +19,17 @@
       </div>
     </div>
 
+    <!-- 周期切换器 -->
+    <div class="period-bar">
+      <span
+        v-for="opt in periodOptions"
+        :key="opt.value"
+        class="period-btn"
+        :class="{ active: period === opt.value }"
+        @click="switchPeriod(opt.value)"
+      >{{ opt.label }}</span>
+    </div>
+
     <!-- K线图 -->
     <div ref="chartRef" class="kline-chart"></div>
   </div>
@@ -27,12 +38,22 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import * as echarts from 'echarts'
-import { getKline, getRealtimeQuote, type KlineData, type RealtimeQuote } from '@/api'
+import {
+  getKline, getRealtimeQuote, getIntraday,
+  type KlineData, type RealtimeQuote, type IntradayData,
+} from '@/api'
 
 const props = defineProps<{ symbol: string }>()
 
 const chartRef = ref<HTMLDivElement | null>(null)
 const quote = ref<RealtimeQuote | null>(null)
+const period = ref<'m5' | 'daily' | 'weekly' | 'monthly'>('daily')
+const periodOptions: Array<{ value: 'm5' | 'daily' | 'weekly' | 'monthly'; label: string }> = [
+  { value: 'm5', label: '分时' },
+  { value: 'daily', label: '日K' },
+  { value: 'weekly', label: '周K' },
+  { value: 'monthly', label: '月K' },
+]
 let chart: echarts.ECharts | null = null
 let resizeHandler: (() => void) | null = null
 
@@ -61,27 +82,38 @@ function fmtTs(ts?: string): string {
 const UP = '#f56c6c'
 const DOWN = '#67c23a'
 
-function render(kd: KlineData) {
+// 统一渲染：接收 dates/klines/ma 数组
+function renderChart(dates: string[], klines: any[], ma: Record<string, (number | null)[]>, isCandle: boolean) {
   if (!chartRef.value) return
-  if (!chart) {
-    chart = echarts.init(chartRef.value)
-  }
-  const dates = kd.dates
-  const klines = kd.klines
-  const candles = klines.map(k => [k.open, k.close, k.low, k.high])
+  if (!chart) chart = echarts.init(chartRef.value)
+
   const volumes = klines.map((k) => ({
     value: k.volume,
     itemStyle: { color: k.close >= k.open ? UP : DOWN },
   }))
 
+  const maSeries = Object.entries(ma).map(([name, data]) => ({
+    name, type: 'line', data, smooth: true, showSymbol: false, lineStyle: { width: 1 },
+  }))
+
+  const mainSeries: any[] = isCandle
+    ? [{
+        name: 'K线', type: 'candlestick', data: klines.map(k => [k.open, k.close, k.low, k.high]),
+        itemStyle: { color: UP, color0: DOWN, borderColor: UP, borderColor0: DOWN },
+      }, ...maSeries]
+    : [{
+        name: '价格', type: 'line', data: klines.map(k => k.close),
+        showSymbol: false, smooth: true,
+        lineStyle: { width: 1.5, color: '#409eff' },
+        areaStyle: { color: 'rgba(64,158,255,0.08)' },
+      }]
+
+  const legendData = isCandle ? ['MA5', 'MA10', 'MA20', 'MA60'] : ['价格']
+
   chart.setOption({
     backgroundColor: 'transparent',
     animation: false,
-    legend: {
-      data: ['MA5', 'MA10', 'MA20', 'MA60'],
-      textStyle: { color: '#8b90a0' },
-      top: 0,
-    },
+    legend: { data: legendData, textStyle: { color: '#8b90a0' }, top: 0 },
     tooltip: {
       trigger: 'axis',
       axisPointer: { type: 'cross' },
@@ -102,47 +134,61 @@ function render(kd: KlineData) {
       { scale: true, gridIndex: 1, axisLabel: { color: '#8b90a0' }, splitLine: { show: false } },
     ],
     dataZoom: [
-      { type: 'inside', xAxisIndex: [0, 1], start: 60, end: 100 },
+      { type: 'inside', xAxisIndex: [0, 1], start: isCandle ? 60 : 0, end: 100 },
       { type: 'slider', xAxisIndex: [0, 1], top: '94%', height: 18, textStyle: { color: '#8b90a0' } },
     ],
     series: [
-      {
-        name: 'K线',
-        type: 'candlestick',
-        data: candles,
-        itemStyle: {
-          color: UP, color0: DOWN,
-          borderColor: UP, borderColor0: DOWN,
-        },
-      },
-      { name: 'MA5', type: 'line', data: kd.ma5, smooth: true, showSymbol: false, lineStyle: { width: 1 } },
-      { name: 'MA10', type: 'line', data: kd.ma10, smooth: true, showSymbol: false, lineStyle: { width: 1 } },
-      { name: 'MA20', type: 'line', data: kd.ma20, smooth: true, showSymbol: false, lineStyle: { width: 1 } },
-      { name: 'MA60', type: 'line', data: kd.ma60, smooth: true, showSymbol: false, lineStyle: { width: 1 } },
-      {
-        name: '成交量',
-        type: 'bar',
-        xAxisIndex: 1,
-        yAxisIndex: 1,
-        data: volumes,
-      },
+      ...mainSeries,
+      { name: '成交量', type: 'bar', xAxisIndex: 1, yAxisIndex: 1, data: volumes },
     ],
   })
+}
+
+function fmtTimeLabel(t: string): string {
+  // 202610191115 -> 10-19 11:15 ；分时 0930 -> 09:30
+  if (t.length === 12) return t.slice(4, 6) + '-' + t.slice(6, 8) + ' ' + t.slice(8, 10) + ':' + t.slice(10, 12)
+  if (t.length === 4) return t.slice(0, 2) + ':' + t.slice(2, 4)
+  return t
+}
+
+async function loadIntraday() {
+  const id: IntradayData = await getIntraday(props.symbol, 'm5')
+  const dates = id.times.map(fmtTimeLabel)
+  const klines = id.klines.map(k => ({
+    open: k.open, close: k.close, high: k.high, low: k.low, volume: k.volume,
+  }))
+  // 分时图用收盘价折线 + 当日均价线（这里简化用 close）
+  renderChart(dates, klines, {}, false)
+}
+
+async function loadKline() {
+  const kd: KlineData = await getKline(props.symbol, 250, period.value as any)
+  renderChart(kd.dates, kd.klines, {
+    MA5: kd.ma5, MA10: kd.ma10, MA20: kd.ma20, MA60: kd.ma60,
+  }, true)
 }
 
 async function load() {
   if (!props.symbol) return
   try {
-    const [kd, q] = await Promise.all([
-      getKline(props.symbol),
-      getRealtimeQuote(props.symbol),
-    ])
+    const q = await getRealtimeQuote(props.symbol)
     quote.value = q || null
     await nextTick()
-    render(kd)
+    if (period.value === 'm5') {
+      await loadIntraday()
+    } else {
+      await loadKline()
+    }
   } catch {
     // 静默失败
   }
+}
+
+async function switchPeriod(p: 'm5' | 'daily' | 'weekly' | 'monthly') {
+  period.value = p
+  await nextTick()
+  if (p === 'm5') await loadIntraday()
+  else await loadKline()
 }
 
 onMounted(() => {
@@ -176,5 +222,16 @@ watch(() => props.symbol, () => load())
 .q-time { color: var(--text-dim); }
 .up { color: var(--up); }
 .down { color: var(--down); }
+.period-bar { display: flex; gap: 6px; margin-bottom: 12px; }
+.period-btn {
+  padding: 4px 14px; font-size: 13px; cursor: pointer; border-radius: 8px;
+  color: var(--text-dim); border: 1px solid var(--border);
+  transition: all 0.2s; user-select: none;
+}
+.period-btn:hover { color: var(--text); border-color: var(--primary); }
+.period-btn.active {
+  color: #fff; background: var(--primary); border-color: var(--primary);
+  font-weight: 600;
+}
 .kline-chart { width: 100%; height: 420px; }
 </style>
