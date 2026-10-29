@@ -92,6 +92,11 @@ interface CachedPeriod {
 const periodCache = new Map<string, CachedPeriod>()
 let loadingPeriods = new Set<string>()
 
+// 分时自动刷新：盘中每 5s 增量追加最新一根 K 线
+let intradayTimer: ReturnType<typeof setInterval> | null = null
+let intradayRefreshing = false
+const INTRADAY_INTERVAL = 5000 // 5 秒
+
 // 自选股（localStorage）
 const FAV_KEY = 'watchlist'
 const favs = ref<string[]>(JSON.parse(localStorage.getItem(FAV_KEY) || '[]'))
@@ -265,6 +270,8 @@ function switchIndicator(ind: 'vol' | 'macd' | 'kdj' | 'rsi') {
 async function switchPeriod(p: 'm5' | 'daily' | 'weekly' | 'monthly') {
   if (p === period.value) return
   period.value = p
+  if (p === 'm5') startIntradayTimer()
+  else stopIntradayTimer()
   const cached = periodCache.get(p)
   if (cached) {
     // 命中缓存：同步渲染，毫秒级
@@ -282,6 +289,61 @@ async function switchPeriod(p: 'm5' | 'daily' | 'weekly' | 'monthly') {
   }
 }
 
+// 判断是否在 A 股交易时段（周一~周五 9:30-11:30 / 13:00-15:00）
+function isTradingTime(): boolean {
+  const now = new Date()
+  const day = now.getDay()
+  if (day === 0 || day === 6) return false // 周末
+  const h = now.getHours()
+  const m = now.getMinutes()
+  const t = h * 60 + m
+  const morning = t >= 9 * 60 + 30 && t <= 11 * 60 + 30
+  const afternoon = t >= 13 * 60 && t <= 15 * 60
+  return morning || afternoon
+}
+
+// 增量刷新分时图：只更新变化的数据，不整图重建
+async function refreshIntraday() {
+  if (period.value !== 'm5' || !isTradingTime() || intradayRefreshing) return
+  intradayRefreshing = true
+  try {
+    const id: IntradayData = await getIntraday(props.symbol, 'm5')
+    const dates = id.times.map(fmtTimeLabel)
+    const klines = id.klines.map(k => ({ open: k.open, close: k.close, high: k.high, low: k.low, volume: k.volume }))
+    const cached = periodCache.get('m5')
+    // 有新增数据才更新（对比时间点数量）
+    if (!cached || dates.length === cached.dates.length) return
+    const cp: CachedPeriod = { dates, klines, kd: null, isCandle: false }
+    periodCache.set('m5', cp)
+    if (period.value === 'm5' && chart) {
+      // 只增量更新分时主图价格线 + 副图成交量（用 replaceMerge 精确替换，主图数据本身不变，仅数据点追加）
+      const main = buildMainSeries(cp)
+      const sub = buildSubSeries(indicator.value, cp.kd, cp.klines)
+      chart.setOption({
+        xAxis: [
+          { data: cp.dates },
+          { data: cp.dates },
+        ],
+        series: [...main, ...sub],
+      }, { replaceMerge: ['series'] })
+    }
+  } catch { /* 静默失败 */ } finally {
+    intradayRefreshing = false
+  }
+}
+
+function startIntradayTimer() {
+  stopIntradayTimer()
+  intradayTimer = setInterval(refreshIntraday, INTRADAY_INTERVAL)
+}
+
+function stopIntradayTimer() {
+  if (intradayTimer) {
+    clearInterval(intradayTimer)
+    intradayTimer = null
+  }
+}
+
 async function load() {
   if (!props.symbol) return
   // 换股票：清空缓存
@@ -294,6 +356,8 @@ async function load() {
     const cp = await fetchPeriod(period.value)
     periodCache.set(period.value, cp)
     renderFull(cp, indicator.value)
+    if (period.value === 'm5') startIntradayTimer()
+    else stopIntradayTimer()
   } catch { /* 静默失败 */ }
 }
 
@@ -304,6 +368,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  stopIntradayTimer()
   if (resizeHandler) window.removeEventListener('resize', resizeHandler)
   chart?.dispose()
   chart = null
